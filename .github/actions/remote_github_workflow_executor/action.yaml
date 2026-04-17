@@ -1,0 +1,176 @@
+name: Remote GitHub Workflow Executor
+description: Trigger a remote workflow, wait for completion, and expose the result to the caller workflow
+
+inputs:
+  github_token:
+    description: GitHub token with permission to trigger workflows in the target repository
+    required: true
+  target_repo_owner:
+    description: Target repository owner (e.g. "canonical")
+    required: true
+  target_repo_name:
+    description: Target repository name
+    required: true
+  target_workflow:
+    description: Target workflow id or workflow file name within the target repo's .github/workflows/ directory (e.g. "workflow.yaml")
+    required: true
+  target_ref:
+    description: Target git ref to dispatch
+    required: false
+    default: main
+  workflow_inputs_json:
+    description: JSON object string for workflow inputs
+    required: false
+    default: '{}'
+
+outputs:
+  run_id:
+    description: Triggered remote workflow run id
+    value: ${{ steps.return_status.outputs.run_id }}
+  run_url:
+    description: Triggered remote workflow run URL
+    value: ${{ steps.return_status.outputs.run_url }}
+  conclusion:
+    description: Triggered remote workflow conclusion
+    value: ${{ steps.return_status.outputs.conclusion }}
+
+runs:
+  using: composite
+  steps:
+    - name: Workflow invocation details
+      id: invocation_details
+      shell: bash
+      env:
+        TARGET_REPO_OWNER: ${{ inputs.target_repo_owner }}
+        TARGET_REPO_NAME: ${{ inputs.target_repo_name }}
+        TARGET_WORKFLOW: ${{ inputs.target_workflow }}
+        TARGET_REF: ${{ inputs.target_ref }}
+        WORKFLOW_INPUTS_JSON: ${{ inputs.workflow_inputs_json }}
+      run: |
+        cat << EOF
+        ------------------------------------------------------------------------
+        WORKFLOW INVOCATION DETAILS
+        ------------------------------------------------------------------------
+
+        CALLER INFORMATION:
+          Caller Repository: ${{ github.repository }}
+          Caller Actor: ${{ github.actor }}
+          Caller Trigger Event: ${{ github.event_name }}
+          Caller Workflow File: ${{ github.workflow }}
+          Caller Run ID: ${{ github.run_id }}
+          Caller Run Number: ${{ github.run_number }}
+          Caller Ref: ${{ github.ref }}
+          Caller SHA: ${{ github.sha }}
+
+        INVOCATION TIMESTAMP:
+          $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+
+        TARGET REPOSITORY:
+          ${TARGET_REPO_OWNER}/${TARGET_REPO_NAME}
+          Workflow: ${TARGET_WORKFLOW}
+          Ref: ${TARGET_REF}
+
+        TARGET INPUTS JSON:
+          ${WORKFLOW_INPUTS_JSON}
+
+        ------------------------------------------------------------------------
+        EOF
+
+    - name: Trigger and record run ID
+      id: trigger_and_record
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        TARGET_REPO_OWNER: ${{ inputs.target_repo_owner }}
+        TARGET_REPO_NAME: ${{ inputs.target_repo_name }}
+        TARGET_WORKFLOW: ${{ inputs.target_workflow }}
+        TARGET_REF: ${{ inputs.target_ref }}
+        WORKFLOW_INPUTS_JSON: ${{ inputs.workflow_inputs_json }}
+      run: |
+        set -euo pipefail
+        cd "${{ github.action_path }}/go/trigger_and_record"
+        go run . \
+          -owner "${TARGET_REPO_OWNER}" \
+          -repo "${TARGET_REPO_NAME}" \
+          -workflow "${TARGET_WORKFLOW}" \
+          -ref "${TARGET_REF}" \
+          -inputs "${WORKFLOW_INPUTS_JSON}"
+
+    - name: Monitor run
+      id: monitor_run
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        TARGET_REPO_OWNER: ${{ inputs.target_repo_owner }}
+        TARGET_REPO_NAME: ${{ inputs.target_repo_name }}
+        RUN_ID: ${{ steps.trigger_and_record.outputs.run_id }}
+      run: |
+        set -euo pipefail
+        cd "${{ github.action_path }}/go/monitor_run"
+        go run . \
+          -owner "${TARGET_REPO_OWNER}" \
+          -repo "${TARGET_REPO_NAME}" \
+          -run-id "${RUN_ID}"
+
+    - name: Completion summary
+      id: completion_summary
+      if: always()
+      shell: bash
+      env:
+        TARGET_REPO_OWNER: ${{ inputs.target_repo_owner }}
+        TARGET_REPO_NAME: ${{ inputs.target_repo_name }}
+        TARGET_WORKFLOW: ${{ inputs.target_workflow }}
+        RUN_ID: ${{ steps.trigger_and_record.outputs.run_id }}
+        RUN_URL: ${{ steps.monitor_run.outputs.run_url }}
+        CONCLUSION: ${{ steps.monitor_run.outputs.conclusion }}
+      run: |
+        cat << EOF
+        ------------------------------------------------------------------------
+        WORKFLOW COMPLETION SUMMARY
+        ------------------------------------------------------------------------
+
+        CALLER:
+          Repository: ${{ github.repository }}
+          Actor: ${{ github.actor }}
+          Run: ${{ github.run_id }}
+
+        REMOTE EXECUTION:
+          Target Repository: ${TARGET_REPO_OWNER}/${TARGET_REPO_NAME}
+          Workflow: ${TARGET_WORKFLOW}
+          Remote Run: ${RUN_ID}
+          Remote URL: ${RUN_URL}
+          Conclusion: ${CONCLUSION}
+
+        COMPLETION TIMESTAMP:
+          $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+
+        ------------------------------------------------------------------------
+        EOF
+
+    - name: Return status to caller
+      id: return_status
+      if: always()
+      shell: bash
+      env:
+        RUN_ID: ${{ steps.trigger_and_record.outputs.run_id }}
+        RUN_URL: ${{ steps.monitor_run.outputs.run_url }}
+        CONCLUSION: ${{ steps.monitor_run.outputs.conclusion }}
+        MONITOR_OUTCOME: ${{ steps.monitor_run.outcome }}
+      run: |
+        set -euo pipefail
+
+        echo "run_id=${RUN_ID}" >> "${GITHUB_OUTPUT}"
+        echo "run_url=${RUN_URL}" >> "${GITHUB_OUTPUT}"
+        echo "conclusion=${CONCLUSION}" >> "${GITHUB_OUTPUT}"
+
+        if [ "${MONITOR_OUTCOME}" = "failure" ]; then
+          echo "ERROR: Monitor step failed"
+          exit 1
+        fi
+
+        if [ "${CONCLUSION}" != "success" ]; then
+          echo "ERROR: Remote workflow finished with conclusion: ${CONCLUSION}"
+          exit 1
+        fi
+
+        echo "OK: Remote workflow completed"
