@@ -7,6 +7,11 @@ on:
     branches:
       - test-workflow
 
+  # on PRs destined for main
+  pull_request:
+    branches:
+      - main
+
 jobs:
   trigger-and-monitor-remote-workflow:
     runs-on: ubuntu-latest
