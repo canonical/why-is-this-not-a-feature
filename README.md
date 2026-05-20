@@ -45,6 +45,7 @@ steps:
 | `target_workflow` | Yes | Workflow ID or workflow file name in the target repository. |
 | `target_ref` | No | Git ref to dispatch in the target repository. Defaults to `main`. |
 | `workflow_inputs_json` | No | JSON object string passed as `workflow_dispatch` inputs. Defaults to `{}`. |
+| `metadata` | No | Arbitrary JSON metadata to pass to the remote workflow. Merged with auto-collected caller context (see below). Defaults to `{}`. |
 
 ## Outputs
 
@@ -88,3 +89,23 @@ The caller job will fail when the remote workflow finishes with any conclusion o
 - `target_workflow` can be either a workflow ID or a workflow filename such as `deploy.yml`.
 - `workflow_inputs_json` must be valid JSON.
 - For stable consumption, pin the action to a tag or commit SHA instead of a moving branch when you are ready to productionize it.
+
+## Metadata
+
+The action automatically collects caller context and merges it with any caller-provided `metadata` input. The merged JSON is injected as the `metadata` key in `workflow_inputs_json` before dispatching.
+
+Auto-collected fields:
+
+| Key | Value |
+| --- | --- |
+| `source` | Full URL to the caller workflow run (e.g. `https://github.com/org/repo/actions/runs/123/attempts/1`) |
+| `caller_repo` | Caller repository (`owner/name`) |
+| `caller_actor` | GitHub user or app that triggered the caller workflow |
+| `caller_sha` | Commit SHA of the caller workflow |
+| `caller_ref` | Git ref of the caller workflow |
+| `caller_workflow` | Name of the caller workflow |
+| `caller_event` | Event that triggered the caller workflow |
+
+Caller-provided metadata (via the `metadata` input) is deep-merged on top, so you can override any auto-collected field or add your own keys.
+
+**It is up to the consuming (target) repository to handle the `metadata` input.** If the target workflow does not declare a `metadata` input, GitHub Actions will silently ignore it — no error will occur. Repositories that want to use this information can declare the input and consume it however they see fit (e.g. for tracing, linking to external systems, or passing to observability tooling).
