@@ -94,6 +94,11 @@ The caller job will fail when the remote workflow finishes with any conclusion o
 
 The action automatically collects caller context and merges it with any caller-provided `metadata` input. The merged JSON is injected as the `metadata` key in `workflow_inputs_json` before dispatching.
 
+> **Note:** Because GitHub `workflow_dispatch` inputs are always strings, `metadata` arrives in the target workflow as a **JSON-encoded string**, not a parsed object. The target workflow must parse it to access individual fields, e.g.:
+> ```yaml
+> - run: echo '${{ inputs.metadata }}' | jq .caller_repo
+> ```
+
 Auto-collected fields:
 
 | Key | Value |
