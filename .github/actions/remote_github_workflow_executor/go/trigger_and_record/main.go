@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -72,7 +73,10 @@ func dispatchWorkflow(token, owner, repo, workflow, ref, inputsJSON string) erro
 		return fmt.Errorf("invalid inputs JSON: %w", err)
 	}
 
-	// Create dispatch request
+	return doDispatch(token, url, ref, inputs)
+}
+
+func doDispatch(token, url, ref string, inputs map[string]interface{}) error {
 	body := map[string]interface{}{
 		"ref":    ref,
 		"inputs": inputs,
@@ -82,7 +86,6 @@ func dispatchWorkflow(token, owner, repo, workflow, ref, inputsJSON string) erro
 		return err
 	}
 
-	// Retry loop for dispatch
 	for attempt := 1; attempt <= 5; attempt++ {
 		fmt.Printf("INFO: [Dispatch attempt %d/5] POST %s\n", attempt, url)
 
@@ -116,6 +119,15 @@ func dispatchWorkflow(token, owner, repo, workflow, ref, inputsJSON string) erro
 
 		respBody, _ := io.ReadAll(resp.Body)
 
+		// If 422 due to unexpected "metadata" input, strip it and retry without
+		if resp.StatusCode == 422 && inputs["metadata"] != nil {
+			if isUnexpectedInputsError(respBody) {
+				fmt.Printf("WARN: Target workflow does not accept 'metadata' input — retrying without it\n")
+				delete(inputs, "metadata")
+				return doDispatch(token, url, ref, inputs)
+			}
+		}
+
 		if resp.StatusCode == 401 || resp.StatusCode == 403 || resp.StatusCode == 404 {
 			return fmt.Errorf("non-retriable dispatch error (HTTP %d): %s", resp.StatusCode, string(respBody))
 		}
@@ -131,6 +143,17 @@ func dispatchWorkflow(token, owner, repo, workflow, ref, inputsJSON string) erro
 	}
 
 	return nil
+}
+
+// isUnexpectedInputsError checks if a 422 response is about unexpected workflow inputs.
+func isUnexpectedInputsError(body []byte) bool {
+	var errResp struct {
+		Message string `json:"message"`
+	}
+	if json.Unmarshal(body, &errResp) != nil {
+		return false
+	}
+	return strings.Contains(errResp.Message, "Unexpected inputs provided")
 }
 
 func findRunID(token, owner, repo, workflow string) (string, error) {
