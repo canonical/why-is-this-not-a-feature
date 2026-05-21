@@ -108,4 +108,4 @@ Auto-collected fields:
 
 Caller-provided metadata (via the `metadata` input) is deep-merged on top, so you can override any auto-collected field or add your own keys.
 
-**It is up to the consuming (target) repository to handle the `metadata` input.** If the target workflow does not declare a `metadata` input, GitHub Actions will silently ignore it — no error will occur. Repositories that want to use this information can declare the input and consume it however they see fit (e.g. for tracing, linking to external systems, or passing to observability tooling).
+**It is up to the consuming (target) repository to handle the `metadata` input.** If the target workflow does not declare a `metadata` input, the GitHub API will reject the dispatch with HTTP 422 ("Unexpected inputs provided"). The action handles this gracefully: when a 422 is detected for unexpected inputs, it automatically strips the `metadata` key and retries the dispatch without it. A warning is logged but the workflow proceeds normally. Once the target workflow adds a `metadata` input, the fallback stops firing and metadata flows through automatically.
