@@ -109,15 +109,16 @@ func doDispatch(token, url, ref string, inputs map[string]interface{}) error {
 			}
 			return err
 		}
-		defer resp.Body.Close()
 
 		if resp.StatusCode == 204 {
+			resp.Body.Close()
 			fmt.Printf("INFO: Dispatch successful (HTTP 204)\n")
 			fmt.Println("OK: Workflow dispatch triggered successfully")
 			return nil
 		}
 
 		respBody, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
 
 		// If 422 due to unexpected "metadata" input, strip it and retry without
 		if resp.StatusCode == 422 && inputs["metadata"] != nil {
