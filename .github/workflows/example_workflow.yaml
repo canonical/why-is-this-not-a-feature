@@ -21,7 +21,7 @@ jobs:
     steps:
       - name: Execute remote GitHub workflow
         id: remote_executor
-        uses: canonical/why-is-this-not-a-feature/.github/actions/remote_github_workflow_executor@main
+        uses: canonical/why-is-this-not-a-feature/.github/actions/remote_github_workflow_executor@test-actions-1
         with:
           github_token: ${{ secrets.GH_TOKEN }}
           target_repo_owner: canonical
