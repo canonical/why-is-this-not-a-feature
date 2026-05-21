@@ -27,7 +27,7 @@ jobs:
           target_repo_owner: canonical
           target_repo_name: terragrunt-deployment-pipelines
           target_workflow: 191418107 #obtained by running `gh workflow list` in the target repository
-          target_ref: test-observer-integration
+          target_ref: main
           workflow_inputs_json: |
             {
               "product": "cos",
