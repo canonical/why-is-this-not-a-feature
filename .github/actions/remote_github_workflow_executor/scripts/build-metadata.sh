@@ -46,13 +46,22 @@ AUTO_META=$(jq -n \
 
 # Merge: auto-collected (base) + caller-provided (override)
 CALLER_META="${CALLER_METADATA:-"{}"}"
-if ! echo "$CALLER_META" | jq empty 2>/dev/null; then
-  CALLER_META="{}"
+if ! echo "$CALLER_META" | jq empty >/dev/null 2>&1; then
+  echo "Error: CALLER_METADATA must be valid JSON." >&2
+  exit 1
+fi
+if ! echo "$CALLER_META" | jq -e 'type == "object"' >/dev/null 2>&1; then
+  echo "Error: CALLER_METADATA must be a JSON object." >&2
+  exit 1
 fi
 MERGED_META=$(echo "$AUTO_META" | jq --argjson caller "$CALLER_META" '. * $caller')
 
 # Inject merged metadata into workflow_inputs_json
 INPUTS_JSON="${WORKFLOW_INPUTS_JSON:-"{}"}"
+if ! echo "$INPUTS_JSON" | jq -e 'type == "object"' >/dev/null 2>&1; then
+  echo "ERROR: WORKFLOW_INPUTS_JSON must be a valid JSON object." >&2
+  exit 1
+fi
 FINAL_INPUTS=$(echo "$INPUTS_JSON" | jq --arg meta "$MERGED_META" '. + {metadata: $meta}')
 
 echo "$FINAL_INPUTS"
