@@ -95,37 +95,7 @@ runs:
         CALLER_WORKFLOW: ${{ github.workflow }}
         CALLER_EVENT: ${{ github.event_name }}
         GITHUB_SERVER_URL: ${{ github.server_url }}
-      run: |
-        set -euo pipefail
-
-        # Auto-collected caller context
-        AUTO_META=$(jq -n \
-          --arg source "${GITHUB_SERVER_URL}/${CALLER_REPO}/actions/runs/${CALLER_RUN_ID}/attempts/${CALLER_RUN_ATTEMPT}" \
-          --arg caller_repo "$CALLER_REPO" \
-          --arg caller_actor "$CALLER_ACTOR" \
-          --arg caller_sha "$CALLER_SHA" \
-          --arg caller_ref "$CALLER_REF" \
-          --arg caller_workflow "$CALLER_WORKFLOW" \
-          --arg caller_event "$CALLER_EVENT" \
-          '{
-            source: $source,
-            caller_repo: $caller_repo,
-            caller_actor: $caller_actor,
-            caller_sha: $caller_sha,
-            caller_ref: $caller_ref,
-            caller_workflow: $caller_workflow,
-            caller_event: $caller_event
-          }')
-
-        # Merge: auto-collected (base) + caller-provided (override)
-        MERGED_META=$(echo "$AUTO_META" | jq --argjson caller "${CALLER_METADATA:-{}}" '. * $caller')
-
-        # Inject merged metadata into workflow_inputs_json
-        FINAL_INPUTS=$(echo "${WORKFLOW_INPUTS_JSON}" | jq --arg meta "$MERGED_META" '. + {metadata: $meta}')
-
-        echo "workflow_inputs_json<<EOF" >> "$GITHUB_OUTPUT"
-        echo "$FINAL_INPUTS" >> "$GITHUB_OUTPUT"
-        echo "EOF" >> "$GITHUB_OUTPUT"
+      run: ${{ github.action_path }}/scripts/build-metadata.sh
 
     - name: Trigger and record run ID
       id: trigger_and_record
