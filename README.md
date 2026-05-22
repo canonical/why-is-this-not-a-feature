@@ -45,6 +45,7 @@ steps:
 | `target_workflow` | Yes | Workflow ID or workflow file name in the target repository. |
 | `target_ref` | No | Git ref to dispatch in the target repository. Defaults to `main`. |
 | `workflow_inputs_json` | No | JSON object string passed as `workflow_dispatch` inputs. Defaults to `{}`. |
+| `metadata` | No | Arbitrary JSON metadata to pass to the remote workflow. Merged with auto-collected caller context (see below). Defaults to `{}`. |
 
 ## Outputs
 
@@ -88,3 +89,28 @@ The caller job will fail when the remote workflow finishes with any conclusion o
 - `target_workflow` can be either a workflow ID or a workflow filename such as `deploy.yml`.
 - `workflow_inputs_json` must be valid JSON.
 - For stable consumption, pin the action to a tag or commit SHA instead of a moving branch when you are ready to productionize it.
+
+## Metadata
+
+The action automatically collects caller context and merges it with any caller-provided `metadata` input. The merged JSON is injected as the `metadata` key in `workflow_inputs_json` before dispatching.
+
+> **Note:** Because GitHub `workflow_dispatch` inputs are always strings, `metadata` arrives in the target workflow as a **JSON-encoded string**, not a parsed object. The target workflow must parse it to access individual fields, e.g.:
+> ```yaml
+> - run: echo '${{ inputs.metadata }}' | jq .caller_repo
+> ```
+
+Auto-collected fields:
+
+| Key | Value |
+| --- | --- |
+| `source` | Full URL to the caller workflow run (e.g. `https://github.com/org/repo/actions/runs/123/attempts/1`) |
+| `caller_repo` | Caller repository (`owner/name`) |
+| `caller_actor` | GitHub user or app that triggered the caller workflow |
+| `caller_sha` | Commit SHA of the caller workflow |
+| `caller_ref` | Git ref of the caller workflow |
+| `caller_workflow` | Name of the caller workflow |
+| `caller_event` | Event that triggered the caller workflow |
+
+Caller-provided metadata (via the `metadata` input) is deep-merged on top, so you can override any auto-collected field or add your own keys.
+
+**It is up to the consuming (target) repository to handle the `metadata` input.** If the target workflow does not declare a `metadata` input, the GitHub API will reject the dispatch with HTTP 422 ("Unexpected inputs provided"). The action handles this gracefully: when a 422 is detected for unexpected inputs, it automatically strips the `metadata` key and retries the dispatch without it. A warning is logged but the workflow proceeds normally. Once the target workflow adds a `metadata` input, the fallback stops firing and metadata flows through automatically.

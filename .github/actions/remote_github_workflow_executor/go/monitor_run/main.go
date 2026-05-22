@@ -63,6 +63,9 @@ func monitorRun(token, owner, repo, runID string) (string, string, error) {
 	pollInterval := 10 * time.Second
 	transientErrorCount := 0
 	maxTransientErrors := 3
+	lastStatus := ""
+	pollCount := 0
+	startTime := time.Now()
 	fmt.Printf("INFO: [Polling] GET %s\n", url)
 
 	for {
@@ -99,6 +102,7 @@ func monitorRun(token, owner, repo, runID string) (string, string, error) {
 		}
 
 		transientErrorCount = 0
+		pollCount++
 
 		var result struct {
 			Status     string `json:"status"`
@@ -114,12 +118,27 @@ func monitorRun(token, owner, repo, runID string) (string, string, error) {
 			return "", "", fmt.Errorf("invalid API response - missing status field")
 		}
 
+		// Print the run URL once on first successful poll
+		if pollCount == 1 {
+			fmt.Printf("INFO: Remote run: %s\n", result.HTMLURL)
+		}
+
 		if result.Status == "completed" {
-			fmt.Printf("INFO: Run completed with conclusion: %s\n", result.Conclusion)
+			elapsed := time.Since(startTime).Round(time.Second)
+			fmt.Printf("INFO: Run completed with conclusion: %s (after %s)\n", result.Conclusion, elapsed)
 			return result.Conclusion, result.HTMLURL, nil
 		}
 
-		fmt.Printf("INFO: [%s] Status: %s | Conclusion: %s | Waiting %v...\n", time.Now().UTC().Format("15:04:05"), result.Status, result.Conclusion, pollInterval)
+		// Only log on status transitions; otherwise print a compact heartbeat
+		if result.Status != lastStatus {
+			fmt.Printf("INFO: [%s] Status changed: %s → %s\n", time.Now().UTC().Format("15:04:05"), lastStatus, result.Status)
+			lastStatus = result.Status
+		} else if pollCount%6 == 0 {
+			// Heartbeat every ~60s (6 polls × 10s) so logs aren't completely silent
+			elapsed := time.Since(startTime).Round(time.Second)
+			fmt.Printf("INFO: [%s] Still %s (%s elapsed)\n", time.Now().UTC().Format("15:04:05"), result.Status, elapsed)
+		}
+
 		time.Sleep(pollInterval)
 	}
 }
