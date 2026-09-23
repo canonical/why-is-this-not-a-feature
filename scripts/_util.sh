@@ -42,6 +42,17 @@ export JQ_APT_VERSION="${JQ_APT_VERSION:-}"
 export XMLSTARLET_APT_VERSION="${XMLSTARLET_APT_VERSION:-}"
 export CURL_APT_VERSION="${CURL_APT_VERSION:-}"
 
+# ---------------------------------------------------------------------------
+# Pinned lint tooling (single source of truth)
+#
+# action-validator ships release binaries, so it is pinned by version plus a
+# checksum. zizmor comes from PyPI via pipx and is pinned by version.
+# ---------------------------------------------------------------------------
+export ACTION_VALIDATOR_VERSION="${ACTION_VALIDATOR_VERSION:-0.9.0}"
+export ACTION_VALIDATOR_SHA256="${ACTION_VALIDATOR_SHA256:-9f42f94fca5b8d04c13bccfbb331104b37a9250650d89ae58dc888d46206f9b9}"
+export ZIZMOR_VERSION="${ZIZMOR_VERSION:-1.25.2}"
+export GOLANGCI_LINT_VERSION="${GOLANGCI_LINT_VERSION:-v2.12.2}"
+
 # Error trap handler - identifies the failed command, exit code, and source location
 error_trap() {
     local exit_code=$?
@@ -397,6 +408,7 @@ _install_map_lookup() {
         jq)          echo "_install_apt jq ${JQ_APT_VERSION}" ;;
         xmlstarlet)  echo "_install_apt xmlstarlet ${XMLSTARLET_APT_VERSION}" ;;
         rsync)       echo "_install_apt rsync" ;;
+        shellcheck)  echo "_install_snap shellcheck" ;;
         yq)          echo "_install_snap yq" ;;
         go)          echo "_install_go" ;;
         *)           echo "" ;;
@@ -447,6 +459,14 @@ _find_gomod() {
         fi
         dir="$(dirname "$dir")"
     done
+    # Nothing above us: this repo keeps its modules in subdirectories rather
+    # than at the root, so fall back to the first one below the current dir.
+    local found
+    found=$(find . -name go.mod -not -path '*/vendor/*' 2>/dev/null | sort | head -n1 || true)
+    if [[ -n "$found" ]]; then
+        printf '%s\n' "$found"
+        return 0
+    fi
     return 1
 }
 

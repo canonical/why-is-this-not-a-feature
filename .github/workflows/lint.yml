@@ -1,0 +1,48 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    runs-on: [self-hosted, noble, amd64]
+    steps:
+    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      with:
+        persist-credentials: false
+    - name: Install shellcheck
+      run: ./scripts/lint/setup-shellcheck.sh
+    - name: Lint shell scripts
+      run: ./scripts/lint/shell.sh
+
+  actions:
+    runs-on: [self-hosted, noble, amd64]
+    steps:
+    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      with:
+        persist-credentials: false
+    - name: Install linters
+      run: ./scripts/lint/setup-linters.sh
+    - name: Lint GitHub Actions workflows
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: ./scripts/lint/actions.sh
+
+  lint-go:
+    runs-on: [self-hosted, noble, amd64]
+    steps:
+    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      with:
+        persist-credentials: false
+    - name: Install Go
+      run: ./scripts/go/setup.sh
+    - name: Install Go linters
+      run: ./scripts/go/setup-linters.sh
+    - name: Lint Go code
+      run: ./scripts/go/lint.sh
