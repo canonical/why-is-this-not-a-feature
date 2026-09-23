@@ -1,0 +1,138 @@
+name: Publish JUnit Results to Test Observer
+description: Collect JUnit XML from your own CI, normalise it, and publish it to Test Observer as a Pillar 1 quality signal
+
+inputs:
+  junit_paths:
+    description: Newline- or space-separated JUnit XML paths or globs (globstar supported, e.g. "reports/**/*.xml")
+    required: true
+  artefact_name:
+    description: Artefact the results belong to (e.g. the charm name)
+    required: true
+  artefact_version:
+    description: Artefact revision or version the results were produced against
+    required: true
+  environment:
+    description: Environment the tests ran against (e.g. "gh-runner-ubuntu-24.04")
+    required: true
+  family:
+    description: Artefact family
+    required: false
+    default: charm
+  track:
+    description: Store track
+    required: false
+    default: ''
+  store:
+    description: Store name
+    required: false
+    default: ''
+  series:
+    description: Series
+    required: false
+    default: ''
+  arch:
+    description: Architecture. Defaults to the runner architecture.
+    required: false
+    default: ''
+  execution_stage:
+    description: Execution stage the results belong to (e.g. edge, beta, candidate, stable)
+    required: false
+    default: candidate
+  test_plan:
+    description: Test plan identifier. Defaults to the calling repository.
+    required: false
+    default: ''
+  ci_link:
+    description: Link back to the run that produced the results. Defaults to the caller's workflow run URL.
+    required: false
+    default: ''
+  metadata:
+    description: Arbitrary JSON object merged into the payload's metadata
+    required: false
+    default: '{}'
+  test_observer_url:
+    description: Test Observer base URL. Recorded in logs only while submission is stubbed.
+    required: false
+    default: ''
+  test_observer_token:
+    description: Test Observer credential. Unused while submission is stubbed.
+    required: false
+    default: ''
+  fail_on_no_results:
+    description: Fail the step when no test cases are found
+    required: false
+    default: 'true'
+  payload_preview:
+    description: Print the full submission payload to the log
+    required: false
+    default: 'false'
+
+outputs:
+  normalised_file:
+    description: Path to the normalised JUnit JSON document
+    value: ${{ steps.collect.outputs.normalised_file }}
+  payload_file:
+    description: Path to the Test Observer submission payload
+    value: ${{ steps.build_payload.outputs.payload_file }}
+  total_tests:
+    description: Total number of test cases collected
+    value: ${{ steps.collect.outputs.total_tests }}
+  passed:
+    description: Number of passing test cases
+    value: ${{ steps.collect.outputs.passed }}
+  failed:
+    description: Number of failing test cases
+    value: ${{ steps.collect.outputs.failed }}
+  errors:
+    description: Number of errored test cases
+    value: ${{ steps.collect.outputs.errors }}
+  skipped:
+    description: Number of skipped test cases
+    value: ${{ steps.collect.outputs.skipped }}
+  submitted:
+    description: Whether results reached Test Observer. Always "false" while submission is stubbed.
+    value: ${{ steps.submit.outputs.submitted }}
+
+runs:
+  using: composite
+  steps:
+    # github.action_path is this action's directory inside the checked-out
+    # action repo, so ../../.. is that repo's root where scripts/ lives.
+    # Each script sources scripts/_util.sh and provisions its own tooling via
+    # `requires`, so there is no separate dependency step.
+    - name: Collect JUnit results
+      id: collect
+      shell: bash
+      env:
+        JUNIT_PATHS: ${{ inputs.junit_paths }}
+        FAIL_ON_NO_RESULTS: ${{ inputs.fail_on_no_results }}
+      run: ${{ github.action_path }}/../../../scripts/test_observer_junit_publisher/collect-junit.sh
+
+    - name: Build Test Observer payload
+      id: build_payload
+      shell: bash
+      env:
+        NORMALISED_FILE: ${{ steps.collect.outputs.normalised_file }}
+        TO_FAMILY: ${{ inputs.family }}
+        TO_ARTEFACT_NAME: ${{ inputs.artefact_name }}
+        TO_ARTEFACT_VERSION: ${{ inputs.artefact_version }}
+        TO_TRACK: ${{ inputs.track }}
+        TO_STORE: ${{ inputs.store }}
+        TO_SERIES: ${{ inputs.series }}
+        TO_ARCH: ${{ inputs.arch }}
+        TO_EXECUTION_STAGE: ${{ inputs.execution_stage }}
+        TO_ENVIRONMENT: ${{ inputs.environment }}
+        TO_TEST_PLAN: ${{ inputs.test_plan }}
+        TO_CI_LINK: ${{ inputs.ci_link }}
+        TO_METADATA_JSON: ${{ inputs.metadata }}
+      run: ${{ github.action_path }}/../../../scripts/test_observer_junit_publisher/build-payload.sh
+
+    - name: Submit to Test Observer
+      id: submit
+      shell: bash
+      env:
+        PAYLOAD_FILE: ${{ steps.build_payload.outputs.payload_file }}
+        TEST_OBSERVER_URL: ${{ inputs.test_observer_url }}
+        TEST_OBSERVER_TOKEN: ${{ inputs.test_observer_token }}
+        PAYLOAD_PREVIEW: ${{ inputs.payload_preview }}
+      run: ${{ github.action_path }}/../../../scripts/test_observer_junit_publisher/submit-results.sh
